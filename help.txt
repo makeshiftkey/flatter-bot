@@ -1,0 +1,6 @@
+Here are the things I can do right now: 
+	<3**wyd** : Displays the list of commands currently available. 
+	<3**me** : Sends a compliment to you in the current channel. 
+	<3**friend** : Sends a compliment to the @mentioned users in the current channel.
+	<3**add** : Adds everything you type after add (so don't add quotation marks!) as a new compliment.
+	<3**find** : Finds the flattery you request.  Format the request like D#123 or G#123. G# are compliments that were made in this server! 
