@@ -1,2 +1,6 @@
 *test.py
+*old.py
 *.env
+db.json
+*.log
+*workspace
