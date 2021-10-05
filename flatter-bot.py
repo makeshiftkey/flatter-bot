@@ -5,14 +5,12 @@ from html import escape
 from datetime import datetime
 
 import discord
+from discord import Member
+from discord.ext import commands
+from discord.ext.commands import has_permissions, MissingPermissions
 from dotenv import load_dotenv
 from tinydb import TinyDB, Query, where
 from tinydb.operations import increment, subtract
-
-from discord.ext import commands
-from discord.ext.commands import has_permissions, MissingPermissions
-from discord import Member
-
 
 load_dotenv()
 
@@ -22,7 +20,7 @@ ELOG = 'err.log'
 DEFAULT_FLATTERY = 'flattery.txt'
 MAX = 200
 LONELY = {'index': -1, 'flattery': 'No flattery found. :( Please add some.', \
-    'upvotes':0, 'downvotes':0, 'author':' '}
+    'reactions':{}, 'author':' '}
 SEND_ERRORS = "error.mskey@gmail.com"
 
 def rebuilder(gid):
@@ -63,7 +61,8 @@ def write_error(e, ctx, ecommand):
     return(f"Couldn't {ecommand}. Please report error to {SEND_ERRORS}.")
 #end write_error
 
-def validate_flattery(guild_table, value):
+def validate_flattery(gid, value):
+    guild_table = DB.table(str(gid))
     locate = Query()
     find_num = None
     if(isinstance(value, str)):
@@ -81,13 +80,14 @@ def validate_flattery(guild_table, value):
 #end validate_flattery
 
 
-def get_flattery(guild_table, number=None):
+def get_flattery(gid, number=None):
+    guild_table = DB.table(str(gid))
     if(len(guild_table)==0):
         return(LONELY)
     if(number==None):
         return(random.choice(guild_table.all()))
     else:
-        found_id = validate_flattery(guild_table, number)
+        found_id = validate_flattery(gid, number)
         if(found_id):
             return(guild_table.get(doc_id=found_id))
     return(None)
@@ -106,7 +106,7 @@ def main():
 
     @bot.event
     async def on_guild_join(guild):
-        await rebuilder(guild.id)
+        rebuilder(guild.id)
     #end on_guild_join
 
 
@@ -115,7 +115,7 @@ def main():
         brief='Sends you a random compliment.')
     async def me(ctx):
         guild_table = DB.table(f"{ctx.guild.id}")
-        flat_row = get_flattery(guild_table)
+        flat_row = get_flattery(ctx.guild.id)
         response = f"{ctx.message.author.mention} {flat_row['flattery']} *(#{flat_row['index']})*"
         await ctx.send(response)
     #end me
@@ -125,10 +125,10 @@ def main():
         help='Sends user(s) you @ a compliment.  If a valid flatterdex number \
         is included in the command, the user will be sent that specific \
         compliment.', \
-        brief='Sends @ed users a compliment')
+        brief='Sends @ed users a compliment.')
     async def friend(ctx, *args):
         response = ''
-        guild_table = DB.table(f"{ctx.guild.id}")
+        guild_table = DB.table(str(ctx.guild.id))
         build_flattery = []
         users_ated = []
         flat_line = None
@@ -136,15 +136,15 @@ def main():
             if(re.search('(<@!\\d+>)', i)):
                 users_ated.append(i)
             else: 
-                flat_line = get_flattery(guild_table,i)
+                flat_line = get_flattery(ctx.guild.id,i)
                 if(flat_line):
-                    build_flattery.append(f"{flat_line['flattery']} *({flat_line['index']})*")
+                    build_flattery.append(f"{flat_line['flattery']} *(#{flat_line['index']})*")
         for each in users_ated:
             if(build_flattery):
                 response = response + f"{each} {build_flattery[0]} \n"
                 build_flattery.pop(0)
             else:
-                randomchoice = get_flattery(guild_table)
+                randomchoice = get_flattery(ctx.guild.id)
                 response = response + f"{each} {randomchoice['flattery']} *(#{randomchoice['index']})*\n"
         if not response:
             response = "Type *<3help friend* to learn how to use this command."
@@ -161,7 +161,7 @@ def main():
         guild_table = DB.table(f"{ctx.guild.id}")
         failure = ''
         for i in args:
-            entry = get_flattery(guild_table, i)
+            entry = get_flattery(ctx.guild.id, i)
             if entry: 
                 response = response + f"Flatterdex *#{entry['index']}:*\n" + \
                 f"    Compliment: *{entry['flattery']}*\n"
@@ -217,7 +217,7 @@ def main():
             guild_table.insert({'index':new_index, 'flattery': new_flattery.strip('\n'), \
                 'reactions':{},'author':ctx.message.author.mention})
             response = f"Thank you {ctx.message.author.mention}! The " + \
-            f"Flatterdex entry for your work of art is *{new_index}*."
+            f"Flatterdex entry for your work of art is *#{new_index}*."
         except Exception as etype:
             response = write_error(etype, ctx, "add to flatterbase")
         if not response:
@@ -243,7 +243,7 @@ def main():
     async def remove(ctx, *args):
         locate = Query()
         response = ''
-        guild_id = f"{ctx.guild.id}"
+        guild_id = str(ctx.guild.id)
         author = ctx.message.author.mention
         fails = []
         successes = []
@@ -258,7 +258,7 @@ def main():
             response=f"There aren't any entries in the Flatterbase to remove."
             await ctx.send(response)
         for i in args:
-            validated = validate_flattery(guild_table, i)
+            validated = validate_flattery(guild_id, i)
             if validated: 
                 successes.append(i)
                 val_docids.append(int(validated))
@@ -280,7 +280,7 @@ def main():
             if response: 
                 response = response + "\n"
             response = response + f"I'm sorry {author}, I couldn't locate " +\
-            "the following for removal: "
+            "the following entries for removal: "
             for i in fails: 
                 response = response + f"**#{i}** "
         if not response:
@@ -297,9 +297,9 @@ def main():
         content = reaction.message.content
         emoji = reaction.emoji
         valid_ids = []
-        guild_table = DB.table(f"{ctx.guild.id}")
+        guild_table = DB.table(str(ctx.guild.id))
         for entry in re.findall('(#\\d{1,3}\\b)', content):
-            maybe_id = validate_flattery(guild_table, entry)
+            maybe_id = validate_flattery(ctx.guild.id, entry)
             if(maybe_id):
                 valid_ids.append(maybe_id)
         guild_table.update(update_emojis(1, emoji), doc_ids=valid_ids)
@@ -315,7 +315,7 @@ def main():
         valid_ids = []
         guild_table = DB.table(f"{ctx.guild.id}")
         for entry in re.findall('(#\\d{1,3}\\b)', content):
-            maybe_id = validate_flattery(guild_table, entry)
+            maybe_id = validate_flattery(ctx.guild.id, entry)
             if(maybe_id):
                 valid_ids.append(maybe_id)
         guild_table.update(update_emojis(-1, emoji), doc_ids=valid_ids)
